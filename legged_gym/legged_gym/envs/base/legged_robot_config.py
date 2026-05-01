@@ -255,6 +255,9 @@ class LeggedRobotCfg(BaseConfig):
             action_rate = -0.01
             action_smoothness = -0.005
             stand_still = -2
+            turn_wheel_contact = 0.0
+            turn_compact_hip = 0.0
+            turn_default_pose = 0.0
 
             dof_pos_limits = -2.0
             dof_vel_limits = -1
@@ -270,6 +273,12 @@ class LeggedRobotCfg(BaseConfig):
         soft_dof_pos_limit = 0.8  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.8
         soft_torque_limit = 0.8
+        turn_stand_still_scale = 1.0
+        turn_contact_force_threshold = 1.0
+        turn_compact_hip_sigma = 0.1
+        turn_inside_hip_bias = 0.0
+        turn_outside_hip_bias = 0.0
+        turn_default_pose_sigma = 0.5
 
         max_contact_force = 60.  # forces above this value are penalized
         min_contact_force = 100.  # forces above this value are penalized

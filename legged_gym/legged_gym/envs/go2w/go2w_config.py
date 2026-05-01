@@ -12,12 +12,18 @@ class GO2WRoughCfg(LeggedRobotCfg):
         low_wall_side_margin = 0.4
 
     class commands(LeggedRobotCfg.commands):
-        max_ang_vel_yaw = 3.0
+        # max_ang_vel_yaw = 3.0
 
         class ranges(LeggedRobotCfg.commands.ranges):
-            ang_vel_yaw = [-1.0, 1.0]
-            limit_vel_yaw = [-2.0, 2.0]
-
+            ang_vel_yaw = [-3.0, 3.0]
+            limit_vel_yaw = [-3.5, 3.5]
+            lin_vel_x = [-2.0,2.0]  # min max [m/s]
+            lin_vel_y = [-2.0, 2.5]  # min max [m/s]
+            # ang_vel_yaw = [-0.4, 0.4]    # min max [rad/s]
+            heading = [-3.14, 3.14]
+            limit_vel_x = [-2.0, 2.5]
+            limit_vel_y = [-2.5, 3.0]
+            # limit_vel_yaw = [-1.0, 1.0]
     class init_state(LeggedRobotCfg.init_state):
         pos = [0.0, 0.0, 0.5]  # x,y,z [m]
         default_joint_angles = {  # = target angles [rad] when action = 0.0
@@ -36,6 +42,28 @@ class GO2WRoughCfg(LeggedRobotCfg):
             'RL_calf_joint': -1.5,    # [rad]
             'FR_calf_joint': -1.5,  # [rad]
             'RR_calf_joint': -1.5,    # [rad]
+
+            'FL_foot_joint': 0.,   # [rad]
+            'RL_foot_joint': 0.,   # [rad]
+            'FR_foot_joint': 0.,   # [rad]
+            'RR_foot_joint': 0.,   # [rad]
+        }
+        turn_default_joint_angles = {  # = target angles [rad] when action = 0.0
+            'FL_hip_joint': 0.20,   # [rad]
+            'RL_hip_joint': -0.15,   # [rad]
+            'FR_hip_joint': -0.20,  # [rad]
+            'RR_hip_joint': 0.15,   # [rad]
+
+
+            'FL_thigh_joint': 0.95,     # [rad]
+            'RL_thigh_joint': 0.0,   # [rad]
+            'FR_thigh_joint': 0.95,     # [rad]
+            'RR_thigh_joint': 0.0,   # [rad]
+
+            'FL_calf_joint': -1.30,   # [rad]
+            'RL_calf_joint': -1.20,    # [rad]
+            'FR_calf_joint': -1.30,  # [rad]
+            'RR_calf_joint': -1.20,    # [rad]
 
             'FL_foot_joint': 0.,   # [rad]
             'RL_foot_joint': 0.,   # [rad]
@@ -77,7 +105,7 @@ class GO2WRoughCfg(LeggedRobotCfg):
             tracking_ang_vel = 1.
             lin_vel_z = -1.0
             ang_vel_xy = -0.05
-            orientation = -0.42
+            # orientation = -0.42
             # large_orientation = -1
 
             torques = -1e-5         # 扭矩惩罚，鼓励节能
@@ -92,24 +120,28 @@ class GO2WRoughCfg(LeggedRobotCfg):
             dof_acc = -2.5e-7
             dof_acc_wheel = -2.5e-9
 
-            base_height = -10.        #维持身体高度 -1
+            # base_height = -10.        #维持身体高度 -1
             # feet_air_time = 0.9     #足部离地时间  1
             collision = -0.88          #碰撞惩罚
             # feet_stumble = -0.2
             # feet_height = -0.5
             feet_contact_forces = -1.5e-4   #接触力惩罚，鼓励轻柔接触
             # trap_static = -2.
-            hip_limit = -10.
+            hip_limit = -0.3
             #low_height
             # thigh_low = -5
             # calf_low = -5
 
             action_rate = -0.01
             action_smoothness = -0.001
-            stand_still = -0.7 
+            run_pos_still = -0.6
+            stand_still = -0.3 
+            turn_wheel_contact = -1.0
+            turn_compact_hip = -0.5
+            turn_default_pose = -0.5
             # stand_still_vel = -2
 
-            dof_pos_limits = -2
+            dof_pos_limits = -0.1
             dof_vel_limits = -2
             torque_limits = -2
 
@@ -122,8 +154,14 @@ class GO2WRoughCfg(LeggedRobotCfg):
         only_positive_rewards = False
         tracking_sigma = 0.25  # tracking reward = exp(-error^2/sigma)
         base_height_target = 0.44
+        # turn_stand_still_scale = 0.1
+        # turn_contact_force_threshold = 1.0
+        # turn_compact_hip_sigma = 0.08
+        # turn_inside_hip_bias = 0.18
+        # turn_outside_hip_bias = 0.12
+        # turn_default_pose_sigma = 0.5
 
-        soft_dof_pos_limit = 0.8  # percentage of urdf limits, values above this limit are penalized
+        soft_dof_pos_limit = 1.0  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.8
         soft_torque_limit = 0.8
         max_orientation = 60

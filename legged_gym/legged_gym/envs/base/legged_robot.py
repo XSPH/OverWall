@@ -1173,6 +1173,11 @@ class LeggedRobot(BaseTask):
             dtype=torch.float,
             device=self.device,
             requires_grad=False)
+        self.turn_default_dof_pos = torch.zeros(
+            self.num_dof,
+            dtype=torch.float,
+            device=self.device,
+            requires_grad=False)
         if self.cfg.domain_rand.randomize_imu_offset:
             min_angle, max_angle = self.cfg.domain_rand.randomize_imu_offset_range
 
@@ -1237,10 +1242,16 @@ class LeggedRobot(BaseTask):
                              for name in self.command_curriculum_list}
         
         self.last_base_position = self.base_position.clone()
+        turn_default_joint_angles = getattr(
+            self.cfg.init_state,
+            "turn_default_joint_angles",
+            self.cfg.init_state.default_joint_angles,
+        )
         for i in range(self.num_dofs):
             name = self.dof_names[i]
             angle = self.cfg.init_state.default_joint_angles[name]
             self.default_dof_pos[i] = angle
+            self.turn_default_dof_pos[i] = turn_default_joint_angles.get(name, angle)
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
@@ -1253,6 +1264,7 @@ class LeggedRobot(BaseTask):
                 if self.cfg.control.control_type in ["P", "V"]:
                     print(f"PD gain of joint {name} were not defined, setting them to zero")
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
+        self.turn_default_dof_pos = self.turn_default_dof_pos.unsqueeze(0)
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -1763,7 +1775,7 @@ class LeggedRobot(BaseTask):
     def _reward_orientation(self):
         # Penalize non flat base orientation
         # print("terrain_levels:",self.terrain_levels[0])
-        return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)*10
+        return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)#*10
             # (-torch.exp((self.terrain_levels-4)/4)+10)
             # (self.cfg.terrain.max_init_terrain_level+1-self.terrain_levels)
 
@@ -1913,14 +1925,99 @@ class LeggedRobot(BaseTask):
         return torch.any(torch.norm(self.contact_forces[:,self.feet_indices,:2],
                                     dim=2) > 3 * torch.abs(self.contact_forces[:,self.feet_indices,2]),dim=1)
 
+    def _get_turn_dominant_mask(self):
+        lin_cmd_mag = torch.norm(self.commands[:, :2], dim=1)
+        yaw_cmd_mag = torch.abs(self.commands[:, 2])
+        return (yaw_cmd_mag > self.cfg.commands.min_vel) & (yaw_cmd_mag > lin_cmd_mag)
 
+    def _reward_turn_wheel_contact(self):
+        turn_mask = self._get_turn_dominant_mask().float()
+        contact = (
+            self.contact_forces[:, self.feet_indices, 2]
+            > self.cfg.rewards.turn_contact_force_threshold
+        ).float()
+        return (1.0 - torch.mean(contact, dim=1)) * turn_mask
+
+    def _get_turn_hip_targets(self):
+        hip_pos = self.dof_pos[:, self.hip_joint_indices]
+        hip_targets = self.default_dof_pos[:, self.hip_joint_indices].expand_as(hip_pos).clone()
+        yaw_cmd = self.commands[:, 2]
+        max_yaw_cmd = max(
+            abs(self.cfg.commands.ranges.limit_vel_yaw[0]),
+            abs(self.cfg.commands.ranges.limit_vel_yaw[1]),
+        )
+        if max_yaw_cmd <= 0:
+            return hip_targets
+
+        yaw_scale = torch.clamp(torch.abs(yaw_cmd) / max_yaw_cmd, max=1.0).unsqueeze(1)
+        inside_bias = yaw_scale * self.cfg.rewards.turn_inside_hip_bias
+        outside_bias = yaw_scale * self.cfg.rewards.turn_outside_hip_bias
+        left_turn = (yaw_cmd > 0).unsqueeze(1)
+
+        left_targets = torch.where(left_turn, -inside_bias, outside_bias).repeat(1, 2)
+        right_targets = torch.where(left_turn, -outside_bias, inside_bias).repeat(1, 2)
+        hip_targets[:, [0, 2]] += left_targets
+        hip_targets[:, [1, 3]] += right_targets
+        return hip_targets
+
+    def _reward_turn_compact_hip(self):
+        turn_mask = self._get_turn_dominant_mask().float()
+        hip_targets = self._get_turn_hip_targets()
+        hip_error = torch.sum(
+            torch.square(
+                self.dof_pos[:, self.hip_joint_indices]
+                - hip_targets
+            ),
+            dim=1,
+        )
+        return (
+            1.0 - torch.exp(-hip_error / self.cfg.rewards.turn_compact_hip_sigma)
+        ) * turn_mask
+
+    def _reward_turn_default_pose(self):
+        turn_mask = self._get_turn_dominant_mask().float()
+        pose_error = torch.sum(
+            torch.square(
+                self.dof_pos[:, ~self.wheel_joint_indices]
+                - self.turn_default_dof_pos[:, ~self.wheel_joint_indices]
+            ),
+            dim=1,
+        )
+        return pose_error * turn_mask
+        # return (
+        #     1.0 - torch.exp(-pose_error / self.cfg.rewards.turn_default_pose_sigma)
+        # ) * turn_mask
+
+
+    def _reward_run_pos_still(self):
+        # Penalize deviation from the default pose, but relax the pull when the
+        # command is turn-dominant.
+        turn_mask = self._get_turn_dominant_mask().float()
+        pose_error = torch.sum(
+            torch.abs(
+                self.dof_pos[:, ~self.wheel_joint_indices]
+                - self.default_dof_pos[:, ~self.wheel_joint_indices]
+            ),
+            dim=1,
+        )
+        return pose_error * (1 - turn_mask)
+    
     def _reward_stand_still(self):
-        # Penalize motion at zero commands
-        # print("size:",self.commands[:, :2])
-        return torch.sum(torch.abs(self.dof_pos[:,~self.wheel_joint_indices] - self.default_dof_pos[:,~self.wheel_joint_indices]),
-                         dim=1)* (torch.norm(self.commands[:, :3], dim=1) < 0.1)
-        # * (torch.norm(self.commands[:,:], dim=1) < 0.15)
-    # *self.smooth_mask
+        reward = torch.sum(torch.abs(self.dof_pos[:,~self.wheel_joint_indices] - 
+                                     self.default_dof_pos[:,~self.wheel_joint_indices]),dim=1)* (torch.norm(self.commands[:, :3], dim=1) < 0.1)
+        return reward
+        # lin_cmd_mag = torch.norm(self.commands[:, :2], dim=1)
+        # yaw_cmd_mag = torch.abs(self.commands[:, 2])
+        # turn_relief = torch.where(
+        #     yaw_cmd_mag > lin_cmd_mag,
+        #     torch.full_like(yaw_cmd_mag, self.cfg.rewards.turn_stand_still_scale),
+        #     torch.ones_like(yaw_cmd_mag),
+        # )
+        # return pose_error * turn_relief
+        # # Penalize motion at zero commands
+        # # print("size:",self.commands[:, :2])
+        # return torch.sum(torch.abs(self.dof_pos[:,~self.wheel_joint_indices] - self.default_dof_pos[:,~self.wheel_joint_indices]),
+        #                  dim=1)* (torch.norm(self.commands[:, :3], dim=1) < 0.1)
     def _reward_stand_still_vel(self):
         # Penalize motion at zero commands
         # print("size:",self.commands[:, :3].shape)
@@ -2038,9 +2135,9 @@ class LeggedRobot(BaseTask):
         # IMU 横向加速度观测值 (单位: g)，即机体 y 轴方向的投影重力分量
         a_y_obs = self.projected_gravity[:, 1]
 
-        # 限制目标倾角不超过 ~17.5° (sin=0.3)，防止过度侧倾
+        # 限制目标倾角不超过 ~30° (sin=0.5)，防止过度侧倾
         target = torch.minimum(
-            torch.full_like(theta_des, 0.3),
+            torch.full_like(theta_des, 0.5),
             torch.sin(theta_des)
         )
 
