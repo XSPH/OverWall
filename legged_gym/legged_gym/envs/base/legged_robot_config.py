@@ -105,7 +105,7 @@ class LeggedRobotCfg(BaseConfig):
         non_smooth_max_lin_vel_y = 1
         max_ang_vel_yaw = 2
         curriculum_threshold = 0.75
-        zero_command_prob=0
+        zero_command_prob=0.1
         # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode
         # ang_vel_yaw is recomputed from heading error)
         min_vel = 0.1

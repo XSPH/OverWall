@@ -49,6 +49,27 @@ class GO2WRoughCfg(LeggedRobotCfg):
             'RR_foot_joint': 0.,   # [rad]
         }
         turn_default_joint_angles = {  # = target angles [rad] when action = 0.0
+            # 'FL_hip_joint': 0.15,   # [rad]
+            # 'RL_hip_joint': -0.30,   # [rad]
+            # 'FR_hip_joint': -0.15,  # [rad]
+            # 'RR_hip_joint': 0.30,   # [rad]
+
+
+            # 'FL_thigh_joint': 0.90,     # [rad]
+            # 'RL_thigh_joint': -0.1,   # [rad]
+            # 'FR_thigh_joint': 0.90,     # [rad]
+            # 'RR_thigh_joint': -0.1,   # [rad]
+
+            # 'FL_calf_joint': -1.00,   # [rad]
+            # 'RL_calf_joint': -1.10,    # [rad]
+            # 'FR_calf_joint': -1.00,  # [rad]
+            # 'RR_calf_joint': -1.10,    # [rad]
+
+            # 'FL_foot_joint': 0.,   # [rad]
+            # 'RL_foot_joint': 0.,   # [rad]
+            # 'FR_foot_joint': 0.,   # [rad]
+            # 'RR_foot_joint': 0.,   # [rad]
+
             'FL_hip_joint': 0.25,   # [rad]
             'RL_hip_joint': -0.25,   # [rad]
             'FR_hip_joint': -0.25,  # [rad]
@@ -69,6 +90,7 @@ class GO2WRoughCfg(LeggedRobotCfg):
             'RL_foot_joint': 0.,   # [rad]
             'FR_foot_joint': 0.,   # [rad]
             'RR_foot_joint': 0.,   # [rad]
+
         }
 
     class control(LeggedRobotCfg.control):
@@ -103,8 +125,8 @@ class GO2WRoughCfg(LeggedRobotCfg):
             termination = -0.
             tracking_lin_vel = 2.
             tracking_ang_vel = 1.
-            lin_vel_z = -0.8
-            ang_vel_xy = -0.03
+            lin_vel_z = -1.0
+            ang_vel_xy = -0.05
             # orientation = -0.42
             # large_orientation = -1
 
@@ -127,7 +149,7 @@ class GO2WRoughCfg(LeggedRobotCfg):
             # feet_height = -0.5
             feet_contact_forces = -1.5e-4   #接触力惩罚，鼓励轻柔接触
             # trap_static = -2.
-            hip_limit = -0.25
+            hip_limit = -0.00
             #low_height
             # thigh_low = -5
             # calf_low = -5
@@ -135,10 +157,10 @@ class GO2WRoughCfg(LeggedRobotCfg):
             action_rate = -0.01
             action_smoothness = -0.001
             run_pos_still = -0.7
-            stand_still = -0.5 
+            stand_still = -0.7
             turn_wheel_contact = -1.2
-            turn_compact_hip = -0.5
-            turn_default_pose = -0.5
+            # turn_compact_hip = -0.5
+            turn_default_pose = -0.7
             # stand_still_vel = -2
 
             dof_pos_limits = -0.1
@@ -147,7 +169,7 @@ class GO2WRoughCfg(LeggedRobotCfg):
 
             # power_distribution = -1e-5
             # trot_gait = -0.05
-            centripetal = -5.
+            centripetal = 0.0#-5.
 
         # if true negative total rewards are clipped at zero (avoids early
         # termination problems)

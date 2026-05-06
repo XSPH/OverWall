@@ -1937,7 +1937,7 @@ class LeggedRobot(BaseTask):
             > self.cfg.rewards.turn_contact_force_threshold
         ).float()
         return (1.0 - torch.mean(contact, dim=1)) * turn_mask
-
+    
     def _get_turn_hip_targets(self):
         hip_pos = self.dof_pos[:, self.hip_joint_indices]
         hip_targets = self.default_dof_pos[:, self.hip_joint_indices].expand_as(hip_pos).clone()
@@ -2003,9 +2003,14 @@ class LeggedRobot(BaseTask):
         return pose_error * (1 - turn_mask)
     
     def _reward_stand_still(self):
-        reward = torch.sum(torch.abs(self.dof_pos[:,~self.wheel_joint_indices] - 
-                                     self.default_dof_pos[:,~self.wheel_joint_indices]),dim=1)* (torch.norm(self.commands[:, :3], dim=1) < 0.1)
-        return reward
+        cmd_still = (torch.norm(self.commands[:, :3], dim=1) < 0.1)
+        # 惩罚非轮子关节偏离默认姿态
+        joint_error = torch.sum(torch.abs(self.dof_pos[:,~self.wheel_joint_indices] - 
+                                          self.default_dof_pos[:,~self.wheel_joint_indices]), dim=1)
+        # 惩罚轮子的运动（速度）
+        # wheel_vel_error = torch.sum(torch.abs(self.dof_vel[:, self.wheel_joint_indices]), dim=1)
+        
+        return joint_error  * cmd_still
         # lin_cmd_mag = torch.norm(self.commands[:, :2], dim=1)
         # yaw_cmd_mag = torch.abs(self.commands[:, 2])
         # turn_relief = torch.where(
