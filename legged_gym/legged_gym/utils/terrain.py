@@ -220,9 +220,14 @@ class Terrain:
             ) * low_wall_share
 
             if choice < low_wall_threshold:
+                if self.cfg.low_wall_curriculum:
+                    wall_height = self.cfg.low_wall_height_min + difficulty * (
+                        self.cfg.low_wall_height_max - self.cfg.low_wall_height_min)
+                else:
+                    wall_height = self.cfg.low_wall_height
                 low_wall_terrain(
                     terrain,
-                    wall_height=self.cfg.low_wall_height,
+                    wall_height=wall_height,
                     wall_thickness=self.cfg.low_wall_thickness,
                     side_margin=self.cfg.low_wall_side_margin,
                 )

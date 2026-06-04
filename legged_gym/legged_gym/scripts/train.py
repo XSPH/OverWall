@@ -54,7 +54,7 @@ if 'CUDA_LAUNCH_BLOCKING' in os.environ:
     del os.environ['CUDA_LAUNCH_BLOCKING']
 
 def train(args):
-    path_1 = "/home/asuka/swerve_w/legged_gym/logs/go2_load_teacher_student_phase_model_a/May06_11-16-06_reinforce/model_5000.pt"
+    path_1 = "/home/asuka/swerve_w/legged_gym/logs/go2_load_teacher_student_phase_model_a/May06_14-22-41_reinforce/model_5000.pt"
 
     env, env_cfg = task_registry.make_env(name=args.task, args=args)
     ppo_runner, train_cfg = task_registry.make_alg_runner(

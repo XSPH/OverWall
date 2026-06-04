@@ -86,6 +86,11 @@ class LeggedRobotCfg(BaseConfig):
         low_wall_thickness = 0.05
         low_wall_side_margin = 0.5
 
+        # --- low wall curriculum (wall-crossing progression) ---
+        low_wall_curriculum = False   # enable difficulty-based wall height scaling
+        low_wall_height_min = 0.10    # wall height at easiest level [m]
+        low_wall_height_max = 0.45    # wall height at hardest level [m]
+
         height = [0.02, 0.03]
         downsampled_scale = 0.05
         # trimesh only:
@@ -147,6 +152,7 @@ class LeggedRobotCfg(BaseConfig):
         damping = {'joint_a': 1.0, 'joint_b': 1.5}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.5
+        vel_scale = 10.
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
         hip_scale_reduction=0.5  # scale down hip flexion range
@@ -249,22 +255,16 @@ class LeggedRobotCfg(BaseConfig):
             feet_air_time = 1.0
             collision = -1.
             feet_stumble = -0.2
-            trap_static = -2.
             hip_limit = -0.1
-            # thigh_low = -0.1
             action_rate = -0.01
             action_smoothness = -0.005
-            stand_still = -2
-            turn_wheel_contact = 0.0
-            turn_compact_hip = 0.0
-            turn_default_pose = 0.0
+            stand_still = -1.
+
 
             dof_pos_limits = -2.0
             dof_vel_limits = -1
             torque_limits = -2
 
-            power_distribution = -1e-5
-            trot_gait = -0.02
 
         # if true negative total rewards are clipped at zero (avoids early
         # termination problems)
@@ -273,12 +273,7 @@ class LeggedRobotCfg(BaseConfig):
         soft_dof_pos_limit = 0.8  # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 0.8
         soft_torque_limit = 0.8
-        turn_stand_still_scale = 1.0
-        turn_contact_force_threshold = 1.0
-        turn_compact_hip_sigma = 0.1
-        turn_inside_hip_bias = 0.0
-        turn_outside_hip_bias = 0.0
-        turn_default_pose_sigma = 0.5
+
 
         max_contact_force = 60.  # forces above this value are penalized
         min_contact_force = 100.  # forces above this value are penalized
