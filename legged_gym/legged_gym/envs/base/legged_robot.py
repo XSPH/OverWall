@@ -195,14 +195,14 @@ class LeggedRobot(BaseTask):
             > 10.0,
             dim=1,
         )
-        fail_buf |= self.projected_gravity[:, 2] > -0.1
+        # fail_buf |= self.projected_gravity[:, 2] > -0.1
         self.fail_buf += fail_buf
         self.time_out_buf = (
             self.episode_length_buf > self.max_episode_length
         )  # no terminal reward for time-outs
-        self.power_limit_out_buf = (
-            torch.sum(self.power, dim=1) > self.cfg.control.max_power
-        )
+        # self.power_limit_out_buf = (
+        #     torch.sum(self.power, dim=1) > self.cfg.control.max_power
+        # )
         if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
             self.edge_reset_buf = self.base_position[:, 0] > self.terrain_x_max - 1
             self.edge_reset_buf |= self.base_position[:, 0] < self.terrain_x_min + 1
@@ -213,7 +213,7 @@ class LeggedRobot(BaseTask):
             (self.fail_buf > self.cfg.env.fail_to_terminal_time_s / self.dt)
             | self.time_out_buf
             # | self.edge_reset_buf
-            | long_time_trap
+            # | long_time_trap
             # | self.power_limit_out_buf
         )
 
@@ -621,7 +621,9 @@ class LeggedRobot(BaseTask):
         self.env_command_bins[env_ids.cpu().numpy()] = new_bin_inds
         # print("new_command:",torch.Tensor(new_commands[:, 1]).to(self.device))
         self.commands[env_ids, 0] = torch.Tensor(new_commands[:, 0]).to(self.device)
-        self.commands[env_ids, 1] = torch_rand_float(-0.5, 0.5, (len(env_ids), 1), device=self.device).squeeze(1)
+        self.commands[env_ids, 1] = torch_rand_float(
+            self.cfg.commands.ranges.lin_vel_y[0], self.cfg.commands.ranges.lin_vel_y[1],
+            (len(env_ids), 1), device=self.device).squeeze(1)
         self.commands[env_ids, 2] = torch.Tensor(new_commands[:, 1]).to(self.device)
 
         # set small commands to zero
@@ -691,15 +693,11 @@ class LeggedRobot(BaseTask):
         # self.commands[env_ids, :2] *= (
         #     torch.norm(self.commands[env_ids, :2], dim=1) > self.cfg.commands.min_norm
         # ).unsqueeze(1)
-        zero_command_idx = (
-            (
-                torch_rand_float(0, 1, (len(env_ids), 1), device=self.device)
-                > self.cfg.commands.zero_command_prob
-            )
-            .squeeze(1)
-            .nonzero(as_tuple=False)
-            .flatten()
-        )
+        zero_command_mask = (
+            torch_rand_float(0, 1, (len(env_ids), 1), device=self.device)
+            < self.cfg.commands.zero_command_prob
+        ).squeeze(1)
+        zero_command_idx = env_ids[zero_command_mask.nonzero(as_tuple=False).flatten()]
         self.commands[zero_command_idx, :3] = 0
         if self.cfg.commands.heading_command:
             forward = quat_apply(
@@ -745,7 +743,7 @@ class LeggedRobot(BaseTask):
         control_type = self.cfg.control.control_type
         if control_type=="P":
             torques = p_gains * (
-                actions_scaled + dof_err + motor_offset
+                actions_scaled - dof_err + motor_offset
             ) + d_gains * (vel_ref - self.dof_vel)
 
         elif control_type == "V":
@@ -1723,7 +1721,31 @@ class LeggedRobot(BaseTask):
         heights = torch.min(heights, heights3)
 
         return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
-   
+
+    #------------ wall detection helpers ----------------
+    def _detect_wall(self):
+        """Detect wall ahead from measured_heights.
+        Returns (wall_distance, wall_height, wall_detected) — all (num_envs,) tensors.
+        """
+        if self.measured_heights is None or (isinstance(self.measured_heights, int) and self.measured_heights == 0):
+            return (torch.zeros(self.num_envs, device=self.device),
+                    torch.zeros(self.num_envs, device=self.device),
+                    torch.zeros(self.num_envs, dtype=torch.bool, device=self.device))
+        heights = self.measured_heights.view(self.num_envs, 17, 11)
+        # front half: x indices 8:17 (0 m to +0.8 m ahead in body frame)
+        front_heights = heights[:, 8:, :]
+        front_flat = front_heights.reshape(self.num_envs, -1)
+        max_height, max_idx = torch.max(front_flat, dim=1)
+        x_idx = max_idx // 11
+        wall_distance = x_idx.float() * 0.1  # 0.1m per bin
+        wall_detected = max_height > 0.05      # > 5cm is a wall
+        return wall_distance, max_height, wall_detected
+
+    def _is_wall_nearby(self):
+        """Wall detected within 0.5m ahead."""
+        wall_dist, _, wall_detected = self._detect_wall()
+        return wall_detected & (wall_dist < 0.5)
+
     #------------ reward functions----------------
     def _reward_lin_vel_z(self):
         # Penalize z axis base linear velocity
@@ -1733,18 +1755,32 @@ class LeggedRobot(BaseTask):
         # Penalize xy axes base angular velocity
         return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
     
+    # def _reward_orientation(self):
+    #     # Penalize non flat base orientation — relaxed near walls
+    #     orientation_err = torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+    #     wall_relief = torch.where(self._is_wall_nearby(), 0.3, 1.0)
+    #     return orientation_err * wall_relief
     def _reward_orientation(self):
         # Penalize non flat base orientation
-        # print("terrain_levels:",self.terrain_levels[0])
         return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
 
-
+    # def _reward_base_height(self):
+    #     # Penalize base height away from target
+    #     # near walls: use rear-terrain reference to avoid false penalty from elevated front
+    #     wall_nearby = self._is_wall_nearby()
+    #     if wall_nearby.any():
+    #         # use minimum terrain height (rear side) as reference
+    #         ref_height = torch.amin(self.measured_heights.view(self.num_envs, 17, 11), dim=(1, 2))
+    #         base_height = self.root_states[:, 2] - ref_height
+    #     else:
+    #         base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
+    #     return torch.square(base_height - self.cfg.rewards.base_height_target)
+ 
     def _reward_base_height(self):
         # Penalize base height away from target
         base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        # print("base_height: ", base_height)
-        return torch.square(base_height - self.cfg.rewards.base_height_target) #*torch.clamp(9-self.terrain_levels, min=0.0)
- 
+        return torch.square(base_height - self.cfg.rewards.base_height_target)
+    
     def _reward_torques(self):
         # Penalize torques
         # print("torque::",self.torques[0,self.wheel_joint_indices])
@@ -1871,11 +1907,10 @@ class LeggedRobot(BaseTask):
         # des_feet_air_time = 0.2
         rew_airTime = torch.sum(torch.clamp((self.feet_air_time - des_feet_air_time), max=0.) * first_contact, dim=1)
         self.feet_air_time *= ~contact_filt
-        cmd_mask = torch.logical_or(torch.norm(self.commands[:, :2], dim=1) > self.cfg.commands.min_vel, 
+        cmd_mask = torch.logical_or(torch.norm(self.commands[:, :2], dim=1) > self.cfg.commands.min_vel,
         torch.abs(self.commands[:, 2]) > self.cfg.commands.min_vel)
         rew_airTime[~cmd_mask] = -torch.sum(self.feet_air_time[~cmd_mask], dim=1) # reward stand still for zero command
-        cmd_filter = (torch.abs(self.commands[:, 0]) < 0.2) & (torch.norm(self.commands[:, 1:3], dim=1) > 0.2)
-        return rew_airTime * cmd_filter
+        return rew_airTime * cmd_mask.float()
     
     def _reward_stumble(self):
         # Penalize feet hitting vertical surfaces
@@ -2042,5 +2077,43 @@ class LeggedRobot(BaseTask):
         # extract the used quantities (to enable type-hinting)
         reward = torch.square(1 + self.projected_gravity[:,2])
         return reward
-    
+
+    # ========== wall crossing rewards ==========
+
+    def _reward_wall_front_lift(self):
+        """Reward lifting front wheels to wall-top height."""
+        _, wall_height, wall_detected = self._detect_wall()
+        if not wall_detected.any():
+            return torch.zeros(self.num_envs, device=self.device)
+
+        front_wheel_z = self.foot_positions[:, [0, 2], 2]  # FL, FR z
+        front_z_mean = torch.mean(front_wheel_z, dim=1)
+        target = wall_height * 0.7  # 70% of wall height as soft target
+        lift_ratio = front_z_mean / (target + 0.01)
+        # sigmoid reward: steep increase as wheels approach / exceed target
+        reward = torch.sigmoid((lift_ratio - 0.6) * 8.0)
+        return reward * wall_detected.float()
+
+    def _reward_wall_progress(self):
+        """Reward forward body velocity when wall is nearby."""
+        wall_nearby = self._is_wall_nearby()
+        forward_vel = self.base_lin_vel[:, 0]  # body-frame forward
+        return torch.clamp(forward_vel, min=0.) * wall_nearby.float()
+
+    def _reward_wall_crossed(self):
+        """Sparse bonus when COM passes the wall centre line."""
+        wall_center_x = self.env_origins[:, 0] + self.terrain.env_length / 2
+        crossed = (self.base_position[:, 0] > wall_center_x) & \
+                  (self.last_base_position[:, 0] <= wall_center_x)
+        return crossed.float()
+
+    def _reward_wall_height_gain(self):
+        """Reward base height matching expected climbing height."""
+        _, wall_height, wall_detected = self._detect_wall()
+        wall_nearby = wall_detected & (self._detect_wall()[0] < 0.5)
+        target_height = wall_height + 0.35
+        height_error = torch.abs(self.root_states[:, 2] - target_height)
+        reward = torch.exp(-height_error / 0.1)
+        return reward * wall_nearby.float()
+
 

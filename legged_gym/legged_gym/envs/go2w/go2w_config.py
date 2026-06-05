@@ -3,8 +3,8 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class GO2WRoughCfg(LeggedRobotCfg):
     class terrain(LeggedRobotCfg.terrain):
-        mesh_type = 'heightfield'
-        curriculum = True
+        mesh_type = 'plane'  # "heightfield" # none, plane, heightfield or trimesh
+        curriculum = False
         selected = False
 
         num_rows = 10   # 10 difficulty levels (one per row)
@@ -16,24 +16,24 @@ class GO2WRoughCfg(LeggedRobotCfg):
 
         # Enable difficulty-based wall height
         low_wall_curriculum = True
-        low_wall_height_min = 0.10   # level 1  → 10 cm
-        low_wall_height_max = 0.45   # level 10 → 45 cm
+        low_wall_height_min = 0.05   # level 1  → 5 cm (easy start)
+        low_wall_height_max = 0.35   # level 10 → 35 cm (covers 30cm target)
         low_wall_thickness = 0.05    # always 5 cm
         low_wall_side_margin = 0.5
 
     class commands(LeggedRobotCfg.commands):
-        # max_ang_vel_yaw = 3.0
+        curriculum = True
+        zero_command_prob = 0.0  # never stand still — always move forward
 
         class ranges(LeggedRobotCfg.commands.ranges):
-            ang_vel_yaw = [-3.5, 3.5]
-            limit_vel_yaw = [-3.5, 3.5]
-            lin_vel_x = [-2.0,3.0]  # min max [m/s]
-            lin_vel_y = [-2.0, 3.0]  # min max [m/s]
-            # ang_vel_yaw = [-0.4, 0.4]    # min max [rad/s]
-            heading = [-3.14, 3.14]
-            limit_vel_x = [-2.0, 3.0]
-            limit_vel_y = [-2.5, 3.0]
-            # limit_vel_yaw = [-1.0, 1.0]
+            # forward-only: narrow lateral + yaw, broad forward range
+            lin_vel_x = [0.3, 2.0]     # only forward [m/s]
+            lin_vel_y = [0.0, 0.0]     # zero lateral — pure forward
+            ang_vel_yaw = [0.0, 0.0]   # zero yaw — no turning
+            heading = [0.0, 0.0]
+            limit_vel_x = [0.3, 2.0]
+            limit_vel_y = [0.0, 0.0]
+            limit_vel_yaw = [0.0, 0.0]
     class init_state(LeggedRobotCfg.init_state):
         pos = [0.0, 0.0, 0.5]  # x,y,z [m]
         default_joint_angles = {  # = target angles [rad] when action = 0.0
@@ -71,59 +71,71 @@ class GO2WRoughCfg(LeggedRobotCfg):
         decimation = 4
 
     class asset(LeggedRobotCfg.asset):
-        # file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2/urdf/go2.urdf'
-        # file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/TOE_dog3/urdf/dog.urdf'
-        # file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/go2w/urdf/go2w.urdf'
 
-        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/wheel_dog_/urdf/wheel_dog.urdf'
+        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/wheel_dog2/urdf/wheel_dog2.urdf'
 
 
         name = "go2w"
         foot_name = "foot"
         # foot_name = "wheel_solid"
 
-        penalize_contacts_on = ["thigh","motor" "calf","base","hip"]
+        penalize_contacts_on = ["thigh","motor", "calf","base","hip"]
         terminate_after_contacts_on = []    
         self_collisions = 0  # 1 to disable, 0 to enable...bitwise filter
         flip_visual_attachments = False
         
     class rewards(LeggedRobotCfg.rewards):
         class scales:
-            termination = -0.
-            tracking_lin_vel = 2.
-            tracking_ang_vel = 1.
-            lin_vel_z = -1.0
-            ang_vel_xy = -0.05
-            torques = -1e-5         # 扭矩惩罚，鼓励节能
-            torques_wheel = -1e-6   # 轮子扭矩惩罚，鼓励轮子节能
-            power = -2e-5       
-            power_wheel = -2e-6
-            dof_vel = -1e-4         # 关节速度惩罚，鼓励平滑动作
-            dof_vel_wheel = -5e-7
-            dof_acc = -2.5e-7
-            dof_acc_wheel = -2.5e-9
-            collision = -0.88     
-            feet_contact_forces = -1.5e-4   #接触力惩罚，鼓励轻柔接触
-            hip_limit = -0.00
-            action_rate = -0.01
-            action_smoothness = -0.001
-            stand_still = -1.
-            dof_pos_limits = -0.1
-            dof_vel_limits = -2
-            torque_limits = -2
+            # === core locomotion ===
+            tracking_lin_vel = 2.0        # main driving signal
+            tracking_ang_vel = 0.       # reduced — forward is priority
+            lin_vel_z = -1.0              # penalize vertical bounce
+            ang_vel_xy = -0.05            # penalize roll/pitch rate
 
-        # if true negative total rewards are clipped at zero (avoids early
-        # termination problems)
+            # === wall crossing ===
+            # wall_front_lift = 2.0         # reward lifting front wheels to wall height
+            # wall_progress = 1.0           # reward COM forward progress when near wall
+            # wall_crossed = 10.0           # sparse bonus for crossing the wall center
+            # wall_height_gain = 0.5        # reward base height approaching wall height
+
+            # === energy efficiency (keep low) ===
+            torques = -1e-5               # penalize leg torque
+            torques_wheel = -1e-6         # penalize wheel torque (weaker)
+            power = -2e-5                 # penalize leg power
+            power_wheel = -2e-6           # penalize wheel power (weaker)
+            dof_vel = -1e-4               # penalize leg joint velocity
+            dof_vel_wheel = -5e-7         # penalize wheel velocity (weaker)
+            dof_acc = -2.5e-7             # penalize leg acceleration
+            dof_acc_wheel = -2.5e-9       # penalize wheel acceleration (weaker)
+
+            # === smoothness ===
+            action_rate = -0.01           # penalize action changes
+            action_smoothness = -0.001    # penalize action jitter
+
+            # === constraints (relaxed for climbing) ===
+            dof_pos_limits = -10          # hard limit penalty
+            dof_vel_limits = -2           # velocity limit penalty
+            torque_limits = -2            # torque limit penalty
+            orientation = -0.02           # relaxed: allow ~30° tilt during climb
+            base_height = -0.5            # relaxed: height changes during climb
+            stand_still = -1.0            # penalize motion at zero command
+            collision = -0.2              # relaxed: thighs may touch wall
+            feet_contact_forces = -1e-4   # light contact penalty
+            hip_limit = -0.01             # small hip centering
+
+            # === disabled (conflict with wall crossing) ===
+            stumble = 0.0               # feet WILL hit vertical wall face
+            feet_stumble = 0.0          # same reason
+            feet_regulation = 0.0       # leg height pattern breaks during climb
+            feet_air_time = 0.0         # gait pattern changes during climb
+            termination = 0.0
+
         only_positive_rewards = False
-        tracking_sigma = 0.25  # tracking reward = exp(-error^2/sigma)
+        tracking_sigma = 0.25            # tracking reward = exp(-error^2/sigma)
         base_height_target = 0.43
-
-
-        soft_dof_pos_limit = 0.8  # percentage of urdf limits, values above this limit are penalized
-        soft_dof_vel_limit = 0.8
-        soft_torque_limit = 0.8
-        max_orientation = 60
-        max_contact_force = 60.  # forces above this value are penalized
+        soft_dof_pos_limit = 0.9         # percentage of urdf limits
+        max_orientation = 300
+        max_contact_force = 300.         # forces above this value are penalized
 
 
 

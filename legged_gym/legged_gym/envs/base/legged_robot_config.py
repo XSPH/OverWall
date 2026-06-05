@@ -51,7 +51,7 @@ class LeggedRobotCfg(BaseConfig):
 
     #与训练地形有关的参数
     class terrain:
-        mesh_type = 'plane'  # "heightfield" # none, plane, heightfield or trimesh
+        mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1  # [m] 
         vertical_scale = 0.005  # [m]
         border_size = 25  # [m
