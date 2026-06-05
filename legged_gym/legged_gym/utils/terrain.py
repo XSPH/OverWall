@@ -223,12 +223,15 @@ class Terrain:
                 if self.cfg.low_wall_curriculum:
                     wall_height = self.cfg.low_wall_height_min + difficulty * (
                         self.cfg.low_wall_height_max - self.cfg.low_wall_height_min)
+                    wall_thickness = self.cfg.low_wall_thickness_min + difficulty * (
+                        self.cfg.low_wall_thickness_max - self.cfg.low_wall_thickness_min)
                 else:
                     wall_height = self.cfg.low_wall_height
+                    wall_thickness = self.cfg.low_wall_thickness
                 low_wall_terrain(
                     terrain,
                     wall_height=wall_height,
-                    wall_thickness=self.cfg.low_wall_thickness,
+                    wall_thickness=wall_thickness,
                     side_margin=self.cfg.low_wall_side_margin,
                 )
             else:

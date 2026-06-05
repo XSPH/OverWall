@@ -3,8 +3,8 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class GO2WRoughCfg(LeggedRobotCfg):
     class terrain(LeggedRobotCfg.terrain):
-        mesh_type = 'plane'  # "heightfield" # none, plane, heightfield or trimesh
-        curriculum = False
+        mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
+        curriculum = True
         selected = False
 
         num_rows = 10   # 10 difficulty levels (one per row)
@@ -16,10 +16,11 @@ class GO2WRoughCfg(LeggedRobotCfg):
 
         # Enable difficulty-based wall height
         low_wall_curriculum = True
-        low_wall_height_min = 0.05   # level 1  → 5 cm (easy start)
-        low_wall_height_max = 0.35   # level 10 → 35 cm (covers 30cm target)
-        low_wall_thickness = 0.05    # always 5 cm
-        low_wall_side_margin = 0.5
+        low_wall_height_min = 0.0    # level 0 → flat (learn forward first)
+        low_wall_height_max = 0.45   # level 9 → 35 cm (covers 30cm target)
+        low_wall_thickness_min = 0.30   # level 0 → 30 cm (thick, easy)
+        low_wall_thickness_max = 0.05   # level 9 → 5 cm (thin, target)
+        low_wall_side_margin = 0.0   # wall spans full width, no gaps to bypass
 
     class commands(LeggedRobotCfg.commands):
         curriculum = True

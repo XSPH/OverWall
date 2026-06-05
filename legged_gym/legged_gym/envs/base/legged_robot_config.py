@@ -38,8 +38,7 @@ class LeggedRobotCfg(BaseConfig):
         # if not None a priviledge_obs_buf will be returned by step() (critic
         # obs for assymetric training). None is returned otherwise
         # proprio + lin vel + terrrain + doman_random + contact force  + joint torques + joint accelaration 
-        num_privileged_obs = 57+3+ 16+16+16+16 +1+1+4+4 +12
-        # + 187 + 38 + 12 + 12+12
+        num_privileged_obs = 365  # 57(proprio) + 3(lin_vel) + 187(heights) + 74(adapt) + 16(torques) + 16(dof_acc) + 12(contact_forces)
         num_privileged_latent = 32
         num_actions = 16
         env_spacing = 3.  # not used with heightfields/trimeshes
@@ -90,6 +89,8 @@ class LeggedRobotCfg(BaseConfig):
         low_wall_curriculum = False   # enable difficulty-based wall height scaling
         low_wall_height_min = 0.10    # wall height at easiest level [m]
         low_wall_height_max = 0.45    # wall height at hardest level [m]
+        low_wall_thickness_min = 0.05 # wall thickness at easiest level [m]
+        low_wall_thickness_max = 0.05 # wall thickness at hardest level [m]
 
         height = [0.02, 0.03]
         downsampled_scale = 0.05

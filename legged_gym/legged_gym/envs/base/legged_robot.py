@@ -608,7 +608,7 @@ class LeggedRobot(BaseTask):
         task_rewards, success_thresholds = [], []
         # print("self.reward_scales",self.reward_scales)
         for key in ["tracking_lin_vel", "tracking_ang_vel"]:
-                if key in self.command_sums.keys():
+                if key in self.command_sums.keys() and key in self.reward_scales:
                     task_rewards.append(self.command_sums[key][env_ids] / ep_len)
                     success_thresholds.append(self.curriculum_thresholds['commands'][key] * self.reward_scales[key])
                     # print("key:::",key," ",self.curriculum_thresholds['commands'][key]," ", self.reward_scales[key])
