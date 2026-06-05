@@ -99,37 +99,22 @@ class LeggedRobotCfg(BaseConfig):
         slope_treshold = 0.75
 
     class commands:
-        # curriculum = True
-        # min_curriculum_x = -1.
-
-        # max_curriculum_x = 1
-        # max_curriculum_yaw = 2.
         curriculum = True
-        smooth_max_lin_vel_x = 4
-        smooth_max_lin_vel_y = 1
-        non_smooth_max_lin_vel_x = 3
-        non_smooth_max_lin_vel_y = 1
-        max_ang_vel_yaw = 2
-        curriculum_threshold = 0.75
+        max_curriculum = 2.0
         zero_command_prob=0.1
         # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode
         # ang_vel_yaw is recomputed from heading error)
         min_vel = 0.1
         curriculum_seed = 4
-        num_bins_vel_x = 10
-        num_bins_vel_yaw = 10
         num_commands = 4
         resampling_time = 5.  # time before command are changed[s]
         heading_command = False  # if true: compute ang vel command from heading error
 
         class ranges:
-            lin_vel_x = [-0.4,0.4]  # min max [m/s]
+            lin_vel_x = [-1,1]  # min max [m/s]
             lin_vel_y = [-1, 1]  # min max [m/s]
             ang_vel_yaw = [-0.4, 0.4]    # min max [rad/s]
             heading = [-3.14, 3.14]
-            limit_vel_x = [-1.0, 1.0]
-            limit_vel_y = [-0.6, 0.6]
-            limit_vel_yaw = [-1.0, 1.0]
         # class ranges:
         #     lin_vel_x = [-0.001, 0.001]   # min max [m/s]
         #     lin_vel_y = [-0.001, 0.001]   # min max [m/s]
@@ -153,7 +138,7 @@ class LeggedRobotCfg(BaseConfig):
         damping = {'joint_a': 1.0, 'joint_b': 1.5}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.5
-        vel_scale = 10.
+        vel_scale = 10.0
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
         hip_scale_reduction=0.5  # scale down hip flexion range

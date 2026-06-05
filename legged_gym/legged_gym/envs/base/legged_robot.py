@@ -81,9 +81,9 @@ class LeggedRobot(BaseTask):
         if not self.headless:
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
         self._init_buffers()
-        self.group_idx = torch.arange(0, self.cfg.env.num_envs)
+        # self.group_idx = torch.arange(0, self.cfg.env.num_envs)
         self._prepare_reward_function()
-        self._init_command_distribution(torch.arange(self.num_envs, device=self.device))
+        # self._init_command_distribution(torch.arange(self.num_envs, device=self.device))
 
         self.init_done = True
 
@@ -217,7 +217,6 @@ class LeggedRobot(BaseTask):
         # reset robot states
         self._reset_dofs(env_ids)
         self._reset_root_states(env_ids)
-
         self._randomize_dof_props(env_ids,self.cfg)
 
         # reset buffers
@@ -240,14 +239,14 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.curriculum:
             self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
        
-        if self.cfg.terrain.curriculum:
+        # if self.cfg.terrain.curriculum:
             # self.extras["episode"]["group_terrain_level"] = torch.mean(
             #     self.terrain_levels[self.group_idx].float()
             # )
-            if len(self.stair_up_idx) > 0:
-                self.extras["episode"]["group_terrain_level_stair_up"] = torch.mean(
-                    self.terrain_levels[self.stair_up_idx].float()
-                )
+            # if len(self.stair_up_idx) > 0:
+            #     self.extras["episode"]["group_terrain_level_stair_up"] = torch.mean(
+            #         self.terrain_levels[self.stair_up_idx].float()
+                # )
         # if self.cfg.terrain.curriculum and self.cfg.commands.curriculum:
         #     self.extras["episode"]["max_command_x"] = torch.mean(
         #         self.command_ranges["lin_vel_x"][self.smooth_slope_idx, 1].float()
@@ -276,8 +275,8 @@ class LeggedRobot(BaseTask):
             rew = self.reward_functions[i]() * self.reward_scales[name]
             self.rew_buf += rew
             self.episode_sums[name] += rew
-            if name in self.command_curriculum_list:
-                    self.command_sums[name] += rew
+            # if name in self.command_curriculum_list:
+            #         self.command_sums[name] += rew
         if self.cfg.rewards.only_positive_rewards:
             self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
         # add termination reward after clipping
@@ -535,12 +534,10 @@ class LeggedRobot(BaseTask):
         env_ids = (self.episode_length_buf %
                    int(self.cfg.commands.resampling_time /
                        self.dt) == 0).nonzero(as_tuple=False).flatten()
-        self._randomize_dof_props(env_ids, self.cfg)
-        if self.cfg.commands.curriculum:
-            time_out_env_ids = self.time_out_buf.nonzero(as_tuple=False).flatten()
-            self.update_command_curriculum(env_ids)
-        else:
-            self._resample_commands(env_ids)
+        # resample commands without updating curriculum (curriculum only updates at episode reset)
+
+        self._resample_commands(env_ids)
+
         if self.cfg.commands.heading_command:
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
@@ -554,137 +551,54 @@ class LeggedRobot(BaseTask):
                 self.cfg.domain_rand.push_interval == 0):
 
             self._push_robots()
-    def _init_command_distribution(self, env_ids):
-        # new style curriculum
-        from .curriculum import RewardThresholdCurriculum
-        CurriculumClass = RewardThresholdCurriculum
-        self.curriculum = CurriculumClass(seed=self.cfg.commands.curriculum_seed,
-                                               x_vel=(self.cfg.commands.ranges.limit_vel_x[0],
-                                                      self.cfg.commands.ranges.limit_vel_x[1],
-                                                      self.cfg.commands.num_bins_vel_x),
-                                               yaw_vel=(self.cfg.commands.ranges.limit_vel_yaw[0],
-                                                        self.cfg.commands.ranges.limit_vel_yaw[1],
-                                                        self.cfg.commands.num_bins_vel_yaw),
-                                               )
-        self.env_command_bins = np.zeros(len(env_ids), dtype=int)
-        low = np.array([self.cfg.commands.ranges.lin_vel_x[0], self.cfg.commands.ranges.ang_vel_yaw[0]])
-        high = np.array([self.cfg.commands.ranges.lin_vel_x[1], self.cfg.commands.ranges.ang_vel_yaw[1] ])
-        self.curriculum.set_to(low=low, high=high)
-        new_commands, new_bin_inds = self.curriculum.sample(batch_size=len(env_ids))
-        self.env_command_bins[env_ids.cpu().numpy()]= new_bin_inds
+    # def _init_command_distribution(self, env_ids):
+    #     # new style curriculum
+    #     from .curriculum import RewardThresholdCurriculum
+    #     CurriculumClass = RewardThresholdCurriculum
+    #     self.curriculum = CurriculumClass(seed=self.cfg.commands.curriculum_seed,
+    #                                            x_vel=(self.cfg.commands.ranges.limit_vel_x[0],
+    #                                                   self.cfg.commands.ranges.limit_vel_x[1],
+    #                                                   self.cfg.commands.num_bins_vel_x),
+    #                                            yaw_vel=(self.cfg.commands.ranges.limit_vel_yaw[0],
+    #                                                     self.cfg.commands.ranges.limit_vel_yaw[1],
+    #                                                     self.cfg.commands.num_bins_vel_yaw),
+    #                                            )
+    #     self.env_command_bins = np.zeros(len(env_ids), dtype=int)
+    #     low = np.array([self.cfg.commands.ranges.lin_vel_x[0], self.cfg.commands.ranges.ang_vel_yaw[0]])
+    #     high = np.array([self.cfg.commands.ranges.lin_vel_x[1], self.cfg.commands.ranges.ang_vel_yaw[1] ])
+    #     self.curriculum.set_to(low=low, high=high)
+    #     new_commands, new_bin_inds = self.curriculum.sample(batch_size=len(env_ids))
+    #     self.env_command_bins[env_ids.cpu().numpy()]= new_bin_inds
 
     def update_command_curriculum(self, env_ids):
+        """ Implements a curriculum of increasing commands
 
-        if len(env_ids) == 0: return
+        Args:
+            env_ids (List[int]): ids of environments being reset
+        """
+        # If the tracking reward is above 80% of the maximum, increase the range of commands
+        if torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]:
+            self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
+            self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
+   
 
-        timesteps = int(self.cfg.commands.resampling_time / self.dt)
-        ep_len = min(self.max_episode_length, timesteps)
-
-        task_rewards, success_thresholds = [], []
-        # print("self.reward_scales",self.reward_scales)
-        for key in ["tracking_lin_vel", "tracking_ang_vel"]:
-                if key in self.command_sums.keys() and key in self.reward_scales:
-                    task_rewards.append(self.command_sums[key][env_ids] / ep_len)
-                    success_thresholds.append(self.curriculum_thresholds['commands'][key] * self.reward_scales[key])
-                    # print("key:::",key," ",self.curriculum_thresholds['commands'][key]," ", self.reward_scales[key])
-        old_bins = self.env_command_bins[env_ids.cpu().numpy()]
-        if len(success_thresholds) > 0:
-            self.curriculum.update(old_bins, task_rewards, success_thresholds,
-                                  local_range=np.array([0.25, 0.25]))
-        new_commands, new_bin_inds = self.curriculum.sample(batch_size=len(env_ids))
-
-        self.env_command_bins[env_ids.cpu().numpy()] = new_bin_inds
-        # print("new_command:",torch.Tensor(new_commands[:, 1]).to(self.device))
-        self.commands[env_ids, 0] = torch.Tensor(new_commands[:, 0]).to(self.device)
-        self.commands[env_ids, 1] = torch_rand_float(
-            self.cfg.commands.ranges.lin_vel_y[0], self.cfg.commands.ranges.lin_vel_y[1],
-            (len(env_ids), 1), device=self.device).squeeze(1)
-        self.commands[env_ids, 2] = torch.Tensor(new_commands[:, 1]).to(self.device)
-
-        # set small commands to zero
-        self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > self.cfg.commands.min_vel).unsqueeze(1)
-        self.commands[env_ids, 2] *= (torch.abs(self.commands[env_ids, 2]) > self.cfg.commands.min_vel)
-        if hasattr(self, "terrain_levels"):
-            terrain_factor = torch.where(
-                self.terrain_levels[env_ids] < 5,
-                torch.ones_like(self.terrain_levels[env_ids]),
-                1.0 - 0.1 * (self.terrain_levels[env_ids] - 5)
-            )
-            terrain_factor = torch.clamp(terrain_factor, min=0.0)
-
-            self.commands[env_ids, 1] = torch.clamp(
-                self.commands[env_ids, 1],
-                min=-terrain_factor,
-                max=terrain_factor
-            )
-            self.commands[env_ids, 2] = torch.clamp(
-                self.commands[env_ids, 2],
-                min=-terrain_factor,
-                max=terrain_factor
-            )
-        self.v_level[env_ids] = torch.clip(1*torch.norm(self.commands[env_ids, :2], dim=-1)+0.5*torch.abs(self.commands[env_ids, 2]), min=1)
-        # reset command sums
-        for key in self.command_sums.keys():
-            self.command_sums[key][env_ids] = 0.
     def _resample_commands(self, env_ids):
-        """Randommly select commands of some environments
+        """ Randommly select commands of some environments
 
         Args:
             env_ids (List[int]): Environments ids for which new commands are needed
         """
-        self.commands[env_ids, 0] = (
-            self.command_ranges["lin_vel_x"][env_ids, 1]
-            - self.command_ranges["lin_vel_x"][env_ids, 0]
-        ) * torch.rand(len(env_ids), device=self.device) + self.command_ranges[
-            "lin_vel_x"
-        ][
-            env_ids, 0
-        ]
-        self.commands[env_ids, 1] = (
-            self.command_ranges["lin_vel_y"][env_ids, 1]
-            - self.command_ranges["lin_vel_y"][env_ids, 0]
-        ) * torch.rand(len(env_ids), device=self.device) + self.command_ranges[
-            "lin_vel_y"
-        ][
-            env_ids, 0
-        ]
-        self.commands[env_ids, 2] = (
-            self.command_ranges["ang_vel_yaw"][env_ids, 1]
-            - self.command_ranges["ang_vel_yaw"][env_ids, 0]
-        ) * torch.rand(len(env_ids), device=self.device) + self.command_ranges[
-            "ang_vel_yaw"
-        ][
-            env_ids, 0
-        ]
+        self.commands[env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0], self.command_ranges["lin_vel_x"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+        self.commands[env_ids, 1] = torch_rand_float(self.command_ranges["lin_vel_y"][0], self.command_ranges["lin_vel_y"][1], (len(env_ids), 1), device=self.device).squeeze(1)
         if self.cfg.commands.heading_command:
-            self.commands[env_ids, 3] = torch_rand_float(
-                self.command_ranges["heading"][0],
-                self.command_ranges["heading"][1],
-                (len(env_ids), 1),
-                device=self.device,
-            ).squeeze(1)
+            self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0], self.command_ranges["heading"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+        else:
+            self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0], self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1), device=self.device).squeeze(1)
 
         # set small commands to zero
-        # self.commands[env_ids, :2] *= (
-        #     torch.norm(self.commands[env_ids, :2], dim=1) > self.cfg.commands.min_norm
-        # ).unsqueeze(1)
-        zero_command_mask = (
-            torch_rand_float(0, 1, (len(env_ids), 1), device=self.device)
-            < self.cfg.commands.zero_command_prob
-        ).squeeze(1)
-        zero_command_idx = env_ids[zero_command_mask.nonzero(as_tuple=False).flatten()]
-        self.commands[zero_command_idx, :3] = 0
-        if self.cfg.commands.heading_command:
-            forward = quat_apply(
-                self.base_quat[zero_command_idx], self.forward_vec[zero_command_idx]
-            )
-            heading = torch.atan2(forward[:, 1], forward[:, 0])
-            self.commands[zero_command_idx, 3] = heading
-        self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > self.cfg.commands.min_vel).unsqueeze(1)
-        self.commands[env_ids, 2] *= (torch.abs(self.commands[env_ids, 2]) > self.cfg.commands.min_vel)
+        self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.1).unsqueeze(1)
+        self.v_level[env_ids] = torch.clip(torch.norm(self.commands[env_ids, :2], dim=-1) + 0.5 * torch.abs(self.commands[env_ids, 2]), min=1.)
 
-        self.v_level[env_ids] = torch.clip(1.5*torch.norm(self.commands[env_ids, :2], dim=-1)+0.5*torch.abs(self.commands[env_ids, 2]), min=1)
-    
     def _compute_torques(self, actions):
         """ Compute torques from actions.
             Actions can be interpreted as position or velocity targets given to a PD controller, or directly as scaled torques.
@@ -1180,36 +1094,6 @@ class LeggedRobot(BaseTask):
             self.random_imu_offset = quat_mul(pitch_quat, roll_quat)
         else:
             self.random_imu_offset = torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).repeat(self.num_envs,1)
-        self.command_ranges["lin_vel_x"] = torch.zeros(
-            self.num_envs,
-            2,
-            dtype=torch.float,
-            device=self.device,
-            requires_grad=False,
-        )
-        self.command_ranges["lin_vel_x"][:] = torch.tensor(
-            self.cfg.commands.ranges.lin_vel_x
-        )
-        self.command_ranges["lin_vel_y"] = torch.zeros(
-            self.num_envs,
-            2,
-            dtype=torch.float,
-            device=self.device,
-            requires_grad=False,
-        )
-        self.command_ranges["lin_vel_y"][:] = torch.tensor(
-            self.cfg.commands.ranges.lin_vel_y
-        )
-        self.command_ranges["ang_vel_yaw"] = torch.zeros(
-            self.num_envs,
-            2,
-            dtype=torch.float,
-            device=self.device,
-            requires_grad=False,
-        )
-        self.command_ranges["ang_vel_yaw"][:] = torch.tensor(
-            self.cfg.commands.ranges.ang_vel_yaw
-        )
         self.base_position = self.root_states[:, :3]
 
         self.hip_joint_indices = torch.zeros(self.num_dof, dtype=torch.bool, device=self.device,requires_grad=False)
@@ -1697,29 +1581,29 @@ class LeggedRobot(BaseTask):
 
         return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
 
-    #------------ wall detection helpers ----------------
-    def _detect_wall(self):
-        """Detect wall ahead from measured_heights.
-        Returns (wall_distance, wall_height, wall_detected) — all (num_envs,) tensors.
-        """
-        if self.measured_heights is None or (isinstance(self.measured_heights, int) and self.measured_heights == 0):
-            return (torch.zeros(self.num_envs, device=self.device),
-                    torch.zeros(self.num_envs, device=self.device),
-                    torch.zeros(self.num_envs, dtype=torch.bool, device=self.device))
-        heights = self.measured_heights.view(self.num_envs, 17, 11)
-        # front half: x indices 8:17 (0 m to +0.8 m ahead in body frame)
-        front_heights = heights[:, 8:, :]
-        front_flat = front_heights.reshape(self.num_envs, -1)
-        max_height, max_idx = torch.max(front_flat, dim=1)
-        x_idx = max_idx // 11
-        wall_distance = x_idx.float() * 0.1  # 0.1m per bin
-        wall_detected = max_height > 0.05      # > 5cm is a wall
-        return wall_distance, max_height, wall_detected
+    # #------------ wall detection helpers ----------------
+    # def _detect_wall(self):
+    #     """Detect wall ahead from measured_heights.
+    #     Returns (wall_distance, wall_height, wall_detected) — all (num_envs,) tensors.
+    #     """
+    #     if self.measured_heights is None or (isinstance(self.measured_heights, int) and self.measured_heights == 0):
+    #         return (torch.zeros(self.num_envs, device=self.device),
+    #                 torch.zeros(self.num_envs, device=self.device),
+    #                 torch.zeros(self.num_envs, dtype=torch.bool, device=self.device))
+    #     heights = self.measured_heights.view(self.num_envs, 17, 11)
+    #     # front half: x indices 8:17 (0 m to +0.8 m ahead in body frame)
+    #     front_heights = heights[:, 8:, :]
+    #     front_flat = front_heights.reshape(self.num_envs, -1)
+    #     max_height, max_idx = torch.max(front_flat, dim=1)
+    #     x_idx = max_idx // 11
+    #     wall_distance = x_idx.float() * 0.1  # 0.1m per bin
+    #     wall_detected = max_height > 0.05      # > 5cm is a wall
+    #     return wall_distance, max_height, wall_detected
 
-    def _is_wall_nearby(self):
-        """Wall detected within 0.5m ahead."""
-        wall_dist, _, wall_detected = self._detect_wall()
-        return wall_detected & (wall_dist < 0.5)
+    # def _is_wall_nearby(self):
+    #     """Wall detected within 0.5m ahead."""
+    #     wall_dist, _, wall_detected = self._detect_wall()
+    #     return wall_detected & (wall_dist < 0.5)
 
     #------------ reward functions----------------
     def _reward_lin_vel_z(self):
@@ -2053,42 +1937,41 @@ class LeggedRobot(BaseTask):
         reward = torch.square(1 + self.projected_gravity[:,2])
         return reward
 
-    # ========== wall crossing rewards ==========
+    # # ========== wall crossing rewards ==========
 
-    def _reward_wall_front_lift(self):
-        """Reward lifting front wheels to wall-top height."""
-        _, wall_height, wall_detected = self._detect_wall()
-        if not wall_detected.any():
-            return torch.zeros(self.num_envs, device=self.device)
+    # def _reward_wall_front_lift(self):
+    #     """Reward lifting front wheels to wall-top height."""
+    #     _, wall_height, wall_detected = self._detect_wall()
+    #     if not wall_detected.any():
+    #         return torch.zeros(self.num_envs, device=self.device)
+    #     front_wheel_z = self.foot_positions[:, [0, 2], 2]  # FL, FR z
+    #     front_z_mean = torch.mean(front_wheel_z, dim=1)
+    #     target = wall_height * 0.7  # 70% of wall height as soft target
+    #     lift_ratio = front_z_mean / (target + 0.01)
+    #     # sigmoid reward: steep increase as wheels approach / exceed target
+    #     reward = torch.sigmoid((lift_ratio - 0.6) * 8.0)
+    #     return reward * wall_detected.float()
 
-        front_wheel_z = self.foot_positions[:, [0, 2], 2]  # FL, FR z
-        front_z_mean = torch.mean(front_wheel_z, dim=1)
-        target = wall_height * 0.7  # 70% of wall height as soft target
-        lift_ratio = front_z_mean / (target + 0.01)
-        # sigmoid reward: steep increase as wheels approach / exceed target
-        reward = torch.sigmoid((lift_ratio - 0.6) * 8.0)
-        return reward * wall_detected.float()
+    # def _reward_wall_progress(self):
+    #     """Reward forward body velocity when wall is nearby."""
+    #     wall_nearby = self._is_wall_nearby()
+    #     forward_vel = self.base_lin_vel[:, 0]  # body-frame forward
+    #     return torch.clamp(forward_vel, min=0.) * wall_nearby.float()
 
-    def _reward_wall_progress(self):
-        """Reward forward body velocity when wall is nearby."""
-        wall_nearby = self._is_wall_nearby()
-        forward_vel = self.base_lin_vel[:, 0]  # body-frame forward
-        return torch.clamp(forward_vel, min=0.) * wall_nearby.float()
+    # def _reward_wall_crossed(self):
+    #     """Sparse bonus when COM passes the wall centre line."""
+    #     wall_center_x = self.env_origins[:, 0] + self.terrain.env_length / 2
+    #     crossed = (self.base_position[:, 0] > wall_center_x) & \
+    #               (self.last_base_position[:, 0] <= wall_center_x)
+    #     return crossed.float()
 
-    def _reward_wall_crossed(self):
-        """Sparse bonus when COM passes the wall centre line."""
-        wall_center_x = self.env_origins[:, 0] + self.terrain.env_length / 2
-        crossed = (self.base_position[:, 0] > wall_center_x) & \
-                  (self.last_base_position[:, 0] <= wall_center_x)
-        return crossed.float()
-
-    def _reward_wall_height_gain(self):
-        """Reward base height matching expected climbing height."""
-        _, wall_height, wall_detected = self._detect_wall()
-        wall_nearby = wall_detected & (self._detect_wall()[0] < 0.5)
-        target_height = wall_height + 0.35
-        height_error = torch.abs(self.root_states[:, 2] - target_height)
-        reward = torch.exp(-height_error / 0.1)
-        return reward * wall_nearby.float()
+    # def _reward_wall_height_gain(self):
+    #     """Reward base height matching expected climbing height."""
+    #     _, wall_height, wall_detected = self._detect_wall()
+    #     wall_nearby = wall_detected & (self._detect_wall()[0] < 0.5)
+    #     target_height = wall_height + 0.35
+    #     height_error = torch.abs(self.root_states[:, 2] - target_height)
+    #     reward = torch.exp(-height_error / 0.1)
+    #     return reward * wall_nearby.float()
 
 
