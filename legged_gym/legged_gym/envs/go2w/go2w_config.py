@@ -3,8 +3,8 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class GO2WRoughCfg(LeggedRobotCfg):
     class terrain(LeggedRobotCfg.terrain):
-        mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
-        curriculum = True
+        mesh_type = 'plane'  # "heightfield" # none, plane, heightfield or trimesh
+        curriculum = False
         selected = False
 
         num_rows = 10   # 10 difficulty levels (one per row)
@@ -101,10 +101,10 @@ class GO2WRoughCfg(LeggedRobotCfg):
 
             # === energy efficiency (keep low) ===
             torques = -1e-5               # penalize leg torque
-            torques_wheel = -1e-6         # penalize wheel torque (weaker)
-            power = -2e-5                 # penalize leg power
-            power_wheel = -2e-6           # penalize wheel power (weaker)
-            dof_vel = -1e-4               # penalize leg joint velocity
+            torques_wheel = -1e-7         # penalize wheel torque (weaker)
+            power = 0#-2e-5                 # penalize leg power
+            power_wheel = 0#-2e-6           # penalize wheel power (weaker)
+            dof_vel = -1e-5               # penalize leg joint velocity
             dof_vel_wheel = -5e-7         # penalize wheel velocity (weaker)
             dof_acc = -2.5e-7             # penalize leg acceleration
             dof_acc_wheel = -2.5e-9       # penalize wheel acceleration (weaker)
@@ -115,14 +115,14 @@ class GO2WRoughCfg(LeggedRobotCfg):
 
             # === constraints (relaxed for climbing) ===
             dof_pos_limits = -10          # hard limit penalty
-            dof_vel_limits = -2           # velocity limit penalty
-            torque_limits = -2            # torque limit penalty
-            orientation = -0.02           # relaxed: allow ~30° tilt during climb
-            base_height = -0.5            # relaxed: height changes during climb
+            dof_vel_limits = 0.#-2           # velocity limit penalty
+            torque_limits = 0.#-2            # torque limit penalty
+            orientation = -0.5#-0.02           # relaxed: allow ~30° tilt during climb
+            base_height = -10#-0.5            # relaxed: height changes during climb
             stand_still = -1.0            # penalize motion at zero command
-            collision = -0.2              # relaxed: thighs may touch wall
+            collision = -1#-0.2              # relaxed: thighs may touch wall
             feet_contact_forces = -1e-4   # light contact penalty
-            hip_limit = -0.01             # small hip centering
+            hip_limit = -1#-0.01             # small hip centering
 
             # === disabled (conflict with wall crossing) ===
             stumble = 0.0               # feet WILL hit vertical wall face

@@ -177,8 +177,8 @@ class ActorCritic(nn.Module):
         return self.distribution.log_prob(actions).sum(dim=-1)
 
     def act_inference(self, observations, observations_history, critic_observations):
-        # latent = self.proprioceptive_encoder(observations_history) # student inference
-        latent = self.privileged_encoder(critic_observations) # teacher inference
+        latent = self.proprioceptive_encoder(observations_history) # student inference
+        # latent = self.privileged_encoder(critic_observations) # teacher inference
         latent = nn.functional.normalize(latent, p=2, dim=-1)
         actions_mean = self.actor(torch.cat((observations, latent), dim=1))
         return actions_mean

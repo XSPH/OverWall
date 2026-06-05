@@ -137,7 +137,6 @@ class LeggedRobot(BaseTask):
             calls self._post_physics_step_callback() for common computations
             calls self._draw_debug_vis() if needed
         """
-
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
@@ -187,35 +186,11 @@ class LeggedRobot(BaseTask):
     #     self.reset_buf |= self.large_ori_buf
     #     self.reset_buf |= self.time_out_buf
     def check_termination(self):
-        """Check if environments need to be reset"""
-        fail_buf = torch.any(
-            torch.norm(
-                self.contact_forces[:, self.termination_contact_indices, :], dim=-1
-            )
-            > 10.0,
-            dim=1,
-        )
-        # fail_buf |= self.projected_gravity[:, 2] > -0.1
-        self.fail_buf += fail_buf
-        self.time_out_buf = (
-            self.episode_length_buf > self.max_episode_length
-        )  # no terminal reward for time-outs
-        # self.power_limit_out_buf = (
-        #     torch.sum(self.power, dim=1) > self.cfg.control.max_power
-        # )
-        if self.cfg.terrain.mesh_type in ["heightfield", "trimesh"]:
-            self.edge_reset_buf = self.base_position[:, 0] > self.terrain_x_max - 1
-            self.edge_reset_buf |= self.base_position[:, 0] < self.terrain_x_min + 1
-            self.edge_reset_buf |= self.base_position[:, 1] > self.terrain_y_max - 1
-            self.edge_reset_buf |= self.base_position[:, 1] < self.terrain_y_min + 1
-        long_time_trap = self.trap_static_time > 5 
-        self.reset_buf = (
-            (self.fail_buf > self.cfg.env.fail_to_terminal_time_s / self.dt)
-            | self.time_out_buf
-            # | self.edge_reset_buf
-            # | long_time_trap
-            # | self.power_limit_out_buf
-        )
+        """ Check if environments need to be reset
+        """
+        self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
+        self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
+        self.reset_buf |= self.time_out_buf
 
     def reset_idx(self, env_ids):
         """ Reset some environments.
@@ -320,7 +295,7 @@ class LeggedRobot(BaseTask):
     def compute_proprioceptive_observations(self):
         """ Computes privileged observations
         """
-        self.dof_err = self.dof_pos - self.default_dof_pos
+        self.dof_err = self.default_dof_pos - self.dof_pos 
         self.dof_err[:,self.wheel_joint_indices] = 0 
         self.proprioceptive_obs_buf = torch.cat((  
                                                 self.base_ang_vel  * self.obs_scales.ang_vel,
@@ -722,7 +697,7 @@ class LeggedRobot(BaseTask):
             [torch.Tensor]: Torques sent to the simulation
         """
         #pd controller
-        dof_err = self.dof_pos - self.default_dof_pos # 各DOF默认位置 - 目前各DOF位置
+        dof_err = self.default_dof_pos - self.dof_pos  # 各DOF默认位置 - 目前各DOF位置
         dof_err[:,self.wheel_joint_indices] =  0 # 轮子的误差是0
         actions_scaled = actions * self.cfg.control.action_scale # action * 0.25
         actions_scaled[:, self.wheel_joint_indices] = 0 # 轮子使用速度控制，角度增量为0
@@ -743,7 +718,7 @@ class LeggedRobot(BaseTask):
         control_type = self.cfg.control.control_type
         if control_type=="P":
             torques = p_gains * (
-                actions_scaled - dof_err + motor_offset
+                actions_scaled + dof_err + motor_offset
             ) + d_gains * (vel_ref - self.dof_vel)
 
         elif control_type == "V":
